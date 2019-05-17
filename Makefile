@@ -6,7 +6,7 @@ BUILDID      ?= $(shell xxd -l 16 -ps -c 16 /dev/random)
 
 LDFLAGS      ?= "-X main.Version=$(VERSION) -X main.BuildTimestamp=$(TIMESTAMP) -B=0x$(BUILDID)"
 
-PACKAGES   	 := $(shell go list -f '{{ .Dir }}' ./... )
+PACKAGES     := $(shell go list -f '{{ .Dir }}' ./... )
 IMPORT_PATHS := $(shell go list -f '{{ .ImportPath }}' ./... )
 SOURCES      := $(shell go list -f '{{ $$outer := . }}{{range .GoFiles}}{{ $$outer.Dir }}/{{.}} {{end}}' ./... )
 TEST_SOURCES := $(shell go list -f '{{ $$outer := . }}{{range .TestGoFiles}}{{ $$outer.Dir }}/{{.}} {{end}}' ./... )
