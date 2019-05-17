@@ -1,7 +1,9 @@
 package hxx
 
 import (
+	"encoding/binary"
 	"fmt"
+	"math"
 	"reflect"
 	"unicode"
 	"unsafe"
@@ -30,19 +32,71 @@ func byte2rune(b byte) rune {
 
 func NewDump(o interface{}) Dump {
 	v := reflect.ValueOf(o)
-	if v.Kind() != reflect.Ptr {
-		panic(fmt.Errorf("cannot dump non pointer"))
-	}
 	t := v.Type()
-	t = t.Elem()
-	bs := []byte{}
-	sh := (*reflect.SliceHeader)(unsafe.Pointer(&bs))
-	sh.Len = int(t.Size())
-	sh.Cap = sh.Len
-	sh.Data = v.Pointer()
+	l := t.Size()
+	bs := []byte(nil)
+	switch q := o.(type) {
+	case int:
+		bs = make([]byte, l)
+		switch l {
+		case 4:
+			binary.BigEndian.PutUint32(bs, uint32(q))
+		case 8:
+			binary.BigEndian.PutUint64(bs, uint64(q))
+		}
+	case uint:
+		bs = make([]byte, l)
+		switch l {
+		case 4:
+			binary.BigEndian.PutUint32(bs, uint32(q))
+		case 8:
+			binary.BigEndian.PutUint64(bs, uint64(q))
+		}
+	case uint8:
+		bs = make([]byte, l)
+		bs[0] = uint8(q)
+	case int8:
+		bs = make([]byte, l)
+		bs[0] = uint8(q)
+	case uint16:
+		bs = make([]byte, l)
+		binary.BigEndian.PutUint16(bs, q)
+	case int16:
+		bs = make([]byte, l)
+		binary.BigEndian.PutUint16(bs, uint16(q))
+	case uint32:
+		bs = make([]byte, l)
+		binary.BigEndian.PutUint32(bs, q)
+	case int32:
+		bs = make([]byte, l)
+		binary.BigEndian.PutUint32(bs, uint32(q))
+	case uint64:
+		bs = make([]byte, l)
+		binary.BigEndian.PutUint64(bs, q)
+	case int64:
+		bs = make([]byte, l)
+		binary.BigEndian.PutUint64(bs, uint64(q))
+	case float32:
+		bs = make([]byte, l)
+		binary.BigEndian.PutUint32(bs, math.Float32bits(q))
+	case float64:
+		bs = make([]byte, l)
+		binary.BigEndian.PutUint64(bs, math.Float64bits(q))
+	case string:
+		bs = make([]byte, len(q))
+		copy(bs, []byte(q))
+	default:
+		bs = []byte{}
+		t = t.Elem()
+		sh := (*reflect.SliceHeader)(unsafe.Pointer(&bs))
+		sh.Len = int(t.Size())
+		sh.Cap = sh.Len
+		sh.Data = v.Pointer()
+	}
 	return Dump(bs)
 }
 
+// digits count how many hex digits are required for x
 func digits(x uint64) int {
 	y := 0
 	for x != 0 {
@@ -52,6 +106,7 @@ func digits(x uint64) int {
 	return y
 }
 
+// hex return a hex representation for x
 func hex(x uint64, fill byte, w int) string {
 	if w == 0 {
 		return ""
@@ -73,7 +128,11 @@ func hex(x uint64, fill byte, w int) string {
 	return string(y)
 }
 
-func (d Dump) PrintChars(fill rune, latin1 bool) string {
+// Chars produce a string that represents the dump as a string of
+// characters, one character per byte.  fill is used for characters
+// that do not have a graphic representaiton.  latin1 determines if
+// high characters should be used to represent bytes.
+func (d Dump) Chars(fill rune, latin1 bool) string {
 	l := len(d)
 	if l == 0 {
 		return ""
@@ -91,20 +150,17 @@ func (d Dump) PrintChars(fill rune, latin1 bool) string {
 		}
 		i++
 	}
-	for k := i; k < l; k++ {
-		bs = append(bs, fill)
-	}
 	return string(bs)
 }
 
-// PrintHex print w hex digits from d.
-func (d Dump) PrintHex(w int) string {
+// Hex print w hex digits from d and fill with zeros to w
+func (d Dump) Hex(w int) string {
 	if w == 0 {
 		return ""
 	}
 	bs := []byte{}
 	// do this by number of output characters
-	l := len(d) * 2
+	l := d.Digits()
 	if w >= 0 {
 		l = min(w, l)
 	}
@@ -119,31 +175,60 @@ func (d Dump) PrintHex(w int) string {
 	return string(bs[:l])
 }
 
+// Format support for "fmt" package Printf functions.
 func (d Dump) Format(f fmt.State, c rune) {
+	w, ok := f.Width()
+	if !ok {
+		w = d.Digits()
+	}
+	p, ok := f.Precision()
+	if !ok {
+		p = 16
+	}
+	fsharp := f.Flag('#')
 	switch c {
 	case 's':
-		bs := []byte{}
-		f.Write(bs)
+		f.Write([]byte(d.Chars('.', fsharp)))
+	case 'x':
+		f.Write([]byte(d.Hex(w)))
+	case 'v':
+		f.Write([]byte(d.Stringify(true, false, p)))
 	}
 }
 
-func (d Dump) Stringify(e int) (s string) {
+func (d Dump) Stringify(c, latin1 bool, e int) (s string) {
 	l := len(d)
 	i := 0
 	x := digits(uint64(l))
 	for i < l {
+		m := i + e
+		if m >= l {
+			m = l
+		}
 		j := i
-		s = s + hex(uint64(i), '0', x) + ":"
-		for j < i+e && j < l {
-			s = s + " " + hex(uint64(d[j]), '0', 2)
+		// address
+		s = s + hex(uint64(j), '0', x) + ":"
+		// hex representation
+		r := ""
+		for j < m {
+			r = r + " " + hex(uint64(d[j]), '0', 2)
 			j++
 		}
-		for j < i+e {
-			s = s + " " + "  "
-			j++
+		if c {
+			for len(r) < (3 * e) {
+				r = r + "   "
+			}
+			s = s + r + "  " + d[i:m].Chars('.', false) + "\n"
+		} else {
+			s = s + r + "\n"
 		}
-		s = s + "\n"
-		i = j
+		i += e
 	}
 	return s
+}
+
+// Digits returns the number of digits required
+// for a hex representaiton of the dump
+func (d Dump) Digits() int {
+	return len(d) * 2
 }
