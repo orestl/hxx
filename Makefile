@@ -35,12 +35,6 @@ bench: vendor $(TEST_SOURCES) $(SOURCES)
 test: vendor $(TEST_SOURCES) $(SOURCES)
 	go test $(TEST_FLAGS) ./...
 
-vendor: glide.lock
-	glide install -v
-
-glide.lock: glide.yaml
-	glide update -v
-
 clean:
 	rm -f $(BIN)
 

@@ -2,6 +2,7 @@ package hxx
 
 import (
 	"fmt"
+	"regexp"
 	"testing"
 )
 
@@ -167,7 +168,7 @@ func TestFormatHex(t *testing.T) {
 	}
 }
 
-func TestDumpStruct(t *testing.T) {
+func TestDumpStruct0(t *testing.T) {
 	q := &struct {
 		j rune
 		f int
@@ -182,6 +183,30 @@ func TestDumpStruct(t *testing.T) {
 10: 3c 00 00 00 00 00 00 00                          <.......
 ` {
 		t.Errorf("unexpected value: %q", s)
+	}
+}
+
+func TestDumpStruct1(t *testing.T) {
+	q := &struct {
+		j []byte
+		f int32
+		g [][]string
+		k [4]int16
+	}{
+		[]byte("hello there!"),
+		50,
+		[][]string{{"one", "two", "three"}},
+		[...]int16{3, 5, 7, 13},
+	}
+	s := fmt.Sprintf("%v", NewDump(q))
+	if ok, _ := regexp.Match(`00: .. .. .. .. .. .. .. .. 0c 00 00 00 00 00 00 00  .<..............
+        10: 0c 00 00 00 00 00 00 00 32 00 00 00 00 00 00 00  ........2.......
+        20: .. .. .. .. .. .. .. .. 01 00 00 00 00 00 00 00   ...............
+        30: 01 00 00 00 00 00 00 00 03 00 05 00 07 00 0d 00  ................`, []byte(`00: 10 3c 0d 00 c0 00 00 00 0c 00 00 00 00 00 00 00  .<..............
+        10: 0c 00 00 00 00 00 00 00 32 00 00 00 00 00 00 00  ........2.......
+        20: 20 a1 0c 00 c0 00 00 00 01 00 00 00 00 00 00 00   ...............
+        30: 01 00 00 00 00 00 00 00 03 00 05 00 07 00 0d 00  ................`)); !ok {
+		t.Errorf("unexpected value: %s", s)
 	}
 }
 
