@@ -8,9 +8,12 @@ import (
 
 func ExampleFormats() {
 
+	// a simple string example
 	input0 := `Lorem Ipsum.`
 	fmt.Printf("%v\n", hxx.NewDump(input0))
 
+	// structures and other complex objects can be dumped.  These objects must be supplied as pointers into `NewDump`.
+	// Pointers within objects are printed as they are stored.  Pointers are not followed.
 	input1 := struct {
 		Ipsum rune
 		Array [5]int
